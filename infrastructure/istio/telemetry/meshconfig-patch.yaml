@@ -1,0 +1,31 @@
+# Patch the istio ConfigMap to register Jaeger as an extensionProvider.
+# This makes the "jaeger" name available in Telemetry resources.
+#
+# Istio reads extensionProviders from the mesh config at startup.
+# After applying this, restart istiod:
+#   kubectl rollout restart deployment/istiod -n istio-system
+#
+# NOTE: This must contain the FULL mesh config (not just extensionProviders)
+# because kustomize replaces the whole ConfigMap data field.
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: istio
+  namespace: istio-system
+data:
+  mesh: |
+    accessLogFile: /dev/stdout
+    defaultConfig:
+      discoveryAddress: istiod.istio-system.svc:15012
+      proxyMetadata: {}
+    defaultProviders:
+      metrics:
+      - prometheus
+    enablePrometheusMerge: true
+    extensionProviders:
+      - name: jaeger
+        opentelemetry:
+          service: jaeger-collector.istio-system.svc.cluster.local
+          port: 4317
+    rootNamespace: istio-system
+    trustDomain: cluster.local

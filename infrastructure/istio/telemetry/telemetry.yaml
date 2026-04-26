@@ -1,0 +1,12 @@
+# Enable mesh-wide distributed tracing → Jaeger via OTLP gRPC (port 4317)
+# 100% sampling so every request is traced (tune randomSamplingPercentage for production)
+apiVersion: telemetry.istio.io/v1alpha1
+kind: Telemetry
+metadata:
+  name: mesh-tracing
+  namespace: istio-system
+spec:
+  tracing:
+    - providers:
+        - name: jaeger
+      randomSamplingPercentage: 100.0

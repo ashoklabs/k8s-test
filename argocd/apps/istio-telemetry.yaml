@@ -1,0 +1,26 @@
+# Istio telemetry — extensionProviders meshconfig + Telemetry resource
+# Wave 2.5 (after istiod, before ingressgateway) so the provider is registered before any gateway starts
+apiVersion: argoproj.io/v1alpha1
+kind: Application
+metadata:
+  name: istio-telemetry
+  namespace: argocd
+  annotations:
+    argocd.argoproj.io/sync-wave: "3"
+  finalizers:
+    - resources-finalizer.argocd.argoproj.io
+spec:
+  project: infrastructure
+  source:
+    repoURL: git://host.docker.internal:9418/K8s-test
+    targetRevision: HEAD
+    path: infrastructure/istio/telemetry
+  destination:
+    server: https://kubernetes.default.svc
+    namespace: istio-system
+  syncPolicy:
+    automated:
+      prune: true
+      selfHeal: true
+    syncOptions:
+      - ServerSideApply=true

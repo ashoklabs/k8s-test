@@ -33,4 +33,4 @@ ENV PYTHONPATH=/app/packages
 EXPOSE 5000
 
 # gunicorn can import hello.pyc by module name since Python resolves .pyc on PYTHONPATH
-ENTRYPOINT ["python3", "-m", "gunicorn", "--bind", "0.0.0.0:5000", "hello:app"]
+ENTRYPOINT ["python3", "-m", "gunicorn", "--bind", "0.0.0.0:5000", "--access-logfile", "-", "hello:app"]
