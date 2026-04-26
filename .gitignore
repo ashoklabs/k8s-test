@@ -35,6 +35,9 @@ certs/
 age.agekey
 *.agekey
 
+# git daemon marker (used for local testing only)
+git-daemon-export-ok
+
 # Plaintext secret staging area (used by scripts/encrypt-secrets.sh before encryption)
 secrets-plaintext/
 
