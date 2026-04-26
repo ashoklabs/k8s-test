@@ -19,7 +19,7 @@ spec:
         releaseName: istio-ingressgateway
         valueFiles:
           - $values/infrastructure/istio/ingressgateway/values.yaml
-    - repoURL: https://github.com/YOUR_ORG/K8s-test.git
+    - repoURL: git://host.docker.internal:9418/K8s-test
       targetRevision: HEAD
       ref: values
   destination:

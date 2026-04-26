@@ -10,7 +10,7 @@ spec:
 
   # Allow syncing from this repo (update to your actual repo URL)
   sourceRepos:
-    - "https://github.com/YOUR_ORG/K8s-test.git"
+    - "git://host.docker.internal:9418/K8s-test"
     - "https://istio-release.storage.googleapis.com/charts"
     - "https://github.com/knative/serving"
     - "https://github.com/knative-extensions/net-istio"

@@ -9,7 +9,7 @@ spec:
   description: "Workload applications — hello-sourceless, etc."
 
   sourceRepos:
-    - "https://github.com/YOUR_ORG/K8s-test.git"
+    - "git://host.docker.internal:9418/K8s-test"
 
   destinations:
     - namespace: "default"

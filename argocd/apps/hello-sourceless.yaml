@@ -13,7 +13,7 @@ metadata:
 spec:
   project: applications
   source:
-    repoURL: https://github.com/YOUR_ORG/K8s-test.git
+    repoURL: git://host.docker.internal:9418/K8s-test
     targetRevision: HEAD
     path: apps/hello-sourceless
     # ksops CMP plugin decrypts *.enc.yaml secrets via ksops-generator.yaml
