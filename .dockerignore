@@ -1,0 +1,16 @@
+# Python
+venv/
+.venv/
+__pycache__/
+*.pyc
+*.pyo
+
+# Git
+.git/
+.gitignore
+
+# Docker (no need to copy these into the image)
+docker/
+
+# Docs
+README.md
