@@ -1,0 +1,28 @@
+# Knative Serving CRDs — must be installed before serving-core.
+# Wave 4 (after Istio is ready).
+apiVersion: argoproj.io/v1alpha1
+kind: Application
+metadata:
+  name: knative-serving-crds
+  namespace: argocd
+  annotations:
+    argocd.argoproj.io/sync-wave: "4"
+  finalizers:
+    - resources-finalizer.argocd.argoproj.io
+spec:
+  project: infrastructure
+  source:
+    repoURL: https://github.com/YOUR_ORG/K8s-test.git
+    targetRevision: HEAD
+    path: infrastructure/knative/serving-crds
+  destination:
+    server: https://kubernetes.default.svc
+    namespace: knative-serving
+  syncPolicy:
+    automated:
+      prune: true
+      selfHeal: true
+    syncOptions:
+      - CreateNamespace=true
+      - ServerSideApply=true
+      - RespectIgnoreDifferences=true

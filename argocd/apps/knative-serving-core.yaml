@@ -1,0 +1,27 @@
+# Knative Serving Core — activator, autoscaler, controller, webhook.
+# Wave 5 (after Knative CRDs).
+apiVersion: argoproj.io/v1alpha1
+kind: Application
+metadata:
+  name: knative-serving-core
+  namespace: argocd
+  annotations:
+    argocd.argoproj.io/sync-wave: "5"
+  finalizers:
+    - resources-finalizer.argocd.argoproj.io
+spec:
+  project: infrastructure
+  source:
+    repoURL: https://github.com/YOUR_ORG/K8s-test.git
+    targetRevision: HEAD
+    path: infrastructure/knative/serving-core
+  destination:
+    server: https://kubernetes.default.svc
+    namespace: knative-serving
+  syncPolicy:
+    automated:
+      prune: true
+      selfHeal: true
+    syncOptions:
+      - ServerSideApply=true
+      - RespectIgnoreDifferences=true

@@ -1,0 +1,26 @@
+# Knative net-istio — connects Knative networking to Istio.
+# Wave 6 (after both Knative core and Istio are ready).
+apiVersion: argoproj.io/v1alpha1
+kind: Application
+metadata:
+  name: knative-net-istio
+  namespace: argocd
+  annotations:
+    argocd.argoproj.io/sync-wave: "6"
+  finalizers:
+    - resources-finalizer.argocd.argoproj.io
+spec:
+  project: infrastructure
+  source:
+    repoURL: https://github.com/YOUR_ORG/K8s-test.git
+    targetRevision: HEAD
+    path: infrastructure/knative/net-istio
+  destination:
+    server: https://kubernetes.default.svc
+    namespace: knative-serving
+  syncPolicy:
+    automated:
+      prune: true
+      selfHeal: true
+    syncOptions:
+      - ServerSideApply=true

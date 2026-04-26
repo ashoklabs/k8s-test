@@ -1,0 +1,30 @@
+# Istio Base — installs Istio CRDs and the istio-system namespace.
+# Must be the first Istio component (wave 1).
+apiVersion: argoproj.io/v1alpha1
+kind: Application
+metadata:
+  name: istio-base
+  namespace: argocd
+  annotations:
+    argocd.argoproj.io/sync-wave: "1"
+  finalizers:
+    - resources-finalizer.argocd.argoproj.io
+spec:
+  project: infrastructure
+  source:
+    repoURL: https://istio-release.storage.googleapis.com/charts
+    chart: base
+    targetRevision: 1.29.2
+    helm:
+      releaseName: istio-base
+  destination:
+    server: https://kubernetes.default.svc
+    namespace: istio-system
+  syncPolicy:
+    automated:
+      prune: true
+      selfHeal: true
+    syncOptions:
+      - CreateNamespace=true
+      - ServerSideApply=true
+      - RespectIgnoreDifferences=true

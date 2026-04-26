@@ -1,0 +1,44 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: hello-sourceless
+  namespace: default
+  labels:
+    app: hello-sourceless
+spec:
+  replicas: 2
+  selector:
+    matchLabels:
+      app: hello-sourceless
+  template:
+    metadata:
+      labels:
+        app: hello-sourceless
+    spec:
+      containers:
+        - name: hello
+          image: hello-sourceless:latest
+          imagePullPolicy: Never   # image loaded locally into kind
+          ports:
+            - containerPort: 5000
+              protocol: TCP
+          readinessProbe:
+            httpGet:
+              path: /health
+              port: 5000
+            initialDelaySeconds: 5
+            periodSeconds: 10
+          livenessProbe:
+            httpGet:
+              path: /health
+              port: 5000
+            initialDelaySeconds: 10
+            periodSeconds: 20
+          resources:
+            requests:
+              cpu: 50m
+              memory: 64Mi
+            limits:
+              cpu: 200m
+              memory: 128Mi
+---

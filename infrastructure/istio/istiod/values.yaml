@@ -1,0 +1,36 @@
+# Helm values for istiod (Istio control plane)
+# Ref: https://istio.io/latest/docs/setup/install/helm/
+
+pilot:
+  # Enable sidecar auto-injection for the default namespace
+  autoscaleEnabled: false   # disable HPA for kind / dev
+
+  resources:
+    requests:
+      cpu: 100m
+      memory: 128Mi
+    limits:
+      cpu: 500m
+      memory: 512Mi
+
+  # Tracing / telemetry (optional — set to your collector)
+  # traceSampling: 1.0
+
+meshConfig:
+  # Enable access logging to stdout (useful for dev)
+  accessLogFile: /dev/stdout
+
+  # Default proxy resources
+  defaultConfig:
+    proxyMetadata: {}
+
+global:
+  # Proxy (sidecar) resource limits
+  proxy:
+    resources:
+      requests:
+        cpu: 10m
+        memory: 40Mi
+      limits:
+        cpu: 200m
+        memory: 128Mi

@@ -28,6 +28,18 @@ htmlcov/
 .DS_Store
 Thumbs.db
 
+# TLS certificates (generated locally, never commit private keys or plaintext secrets)
+certs/
+
+# AGE private key — NEVER commit this
+age.agekey
+*.agekey
+
+# Plaintext secret staging area (used by scripts/encrypt-secrets.sh before encryption)
+secrets-plaintext/
+
 # IDEs
 .vscode/
 .idea/
+istio-1.29.2/
+

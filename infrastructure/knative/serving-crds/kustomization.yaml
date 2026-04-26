@@ -1,0 +1,7 @@
+# Knative Serving CRDs
+# Points to the official Knative v1.20.3 CRD manifest via kustomize remote ref.
+# ArgoCD fetches this from the Knative GitHub release at sync time.
+apiVersion: kustomize.config.k8s.io/v1beta1
+kind: Kustomization
+resources:
+  - https://github.com/knative/serving/releases/download/knative-v1.20.3/serving-crds.yaml

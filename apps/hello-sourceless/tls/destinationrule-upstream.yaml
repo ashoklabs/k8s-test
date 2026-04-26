@@ -1,0 +1,51 @@
+# ============================================================
+# UPSTREAM mTLS: ingressgateway → Knative pod (East-West leg)
+# ============================================================
+#
+# Traffic flow with this DestinationRule applied:
+#
+#   [curl] ──mTLS──► [ingressgateway] ──ISTIO_MUTUAL──► [hello-sourceless-00002 pod]
+#                        ▲ Gateway credentialName            ▲ DestinationRule credentialName
+#                        (terminates inbound mTLS)            (re-originates outbound mTLS)
+#
+# ISTIO_MUTUAL mode:
+#   Istio automatically provisions and rotates short-lived X.509 certs for each
+#   workload via its internal CA (istiod). You do NOT need to create a Secret —
+#   Istio handles it via SPIFFE/SVID identities.
+#
+# PeerAuthentication (below) enforces that the pod only accepts mTLS connections.
+# Without it the DestinationRule is advisory — the pod still accepts plain HTTP.
+#
+# Apply order: PeerAuthentication first, then DestinationRule.
+# To apply: kubectl apply -f k8s/tls/destinationrule-upstream.yaml
+# ============================================================
+
+---
+# Enforce STRICT mTLS on the Knative revision pod.
+# Any non-mTLS connection (plain HTTP) will be rejected by the sidecar.
+apiVersion: security.istio.io/v1beta1
+kind: PeerAuthentication
+metadata:
+  name: hello-sourceless-strict
+  namespace: default
+spec:
+  selector:
+    matchLabels:
+      serving.knative.dev/service: hello-sourceless
+  mtls:
+    mode: STRICT
+
+---
+# Tell the ingressgateway (and any other caller) to use ISTIO_MUTUAL when
+# connecting to the Knative revision service.
+# Istio auto-selects the workload cert — no credentialName needed.
+apiVersion: networking.istio.io/v1beta1
+kind: DestinationRule
+metadata:
+  name: hello-sourceless-upstream-mtls
+  namespace: default
+spec:
+  host: hello-sourceless-00002.default.svc.cluster.local
+  trafficPolicy:
+    tls:
+      mode: ISTIO_MUTUAL   # Istio-managed certs (SPIFFE/SVID), auto-rotated by istiod

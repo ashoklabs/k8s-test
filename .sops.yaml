@@ -1,0 +1,12 @@
+# SOPS configuration
+# All files matching *.enc.yaml are encrypted with AGE.
+# Public key is safe to commit. Keep the private key (age.agekey) out of git.
+#
+# Generate a new key pair:   age-keygen -o age.agekey
+# Encrypt a secret:          sops --encrypt secret.yaml > secret.enc.yaml
+# Decrypt (inspect):         sops --decrypt secret.enc.yaml
+# Edit in-place:             sops secret.enc.yaml
+
+creation_rules:
+  - path_regex: \.enc\.yaml$
+    age: age1ntkh6h060tngaw8k6jdvvj9hmaydf7zar4hzvpncfur78yqhd9psukzdv5

@@ -1,0 +1,93 @@
+# ============================================================
+# EXTERNAL EGRESS mTLS: pod → external HTTPS API
+# ============================================================
+#
+# Use case: your hello-sourceless pod calls an external service
+# (e.g. a partner API, internal PKI-secured service) that requires
+# the caller to present a client certificate (mTLS).
+#
+# Traffic flow:
+#
+#   [hello-sourceless pod]
+#       │  plain HTTP to localhost:9999 (captured by sidecar)
+#       ▼
+#   [istio-proxy sidecar]
+#       │  re-originates MUTUAL TLS using credentialName secret
+#       ▼
+#   [api.partner.example.com:443]  ── verifies client cert ──►  responds
+#
+# The app code calls http://api.partner.example.com — the sidecar
+# transparently upgrades it to mTLS using the cert in the Secret.
+#
+# Prerequisites:
+#   1. Create the egress client secret in istio-system:
+#      kubectl create secret generic egress-client-creds \
+#        --from-file=tls.crt=certs/client/client.crt \
+#        --from-file=tls.key=certs/client/client.key \
+#        --from-file=ca.crt=certs/ca.crt \
+#        -n istio-system
+#
+#   2. Apply this file:
+#      kubectl apply -f k8s/tls/destinationrule-external.yaml
+# ============================================================
+
+---
+# Register the external host with Istio's service registry.
+# Without this, Istio treats the host as a passthrough and ignores DestinationRules.
+apiVersion: networking.istio.io/v1beta1
+kind: ServiceEntry
+metadata:
+  name: external-partner-api
+  namespace: default
+spec:
+  hosts:
+    - api.partner.example.com      # replace with your real external hostname
+  ports:
+    - number: 443
+      name: https
+      protocol: HTTPS
+  resolution: DNS
+  location: MESH_EXTERNAL
+
+---
+# Configure the sidecar to originate mTLS when calling the external host.
+# credentialName points to a Secret in istio-system that holds:
+#   tls.crt  — client certificate to present to the external server
+#   tls.key  — client private key
+#   ca.crt   — CA to verify the external server's certificate
+apiVersion: networking.istio.io/v1beta1
+kind: DestinationRule
+metadata:
+  name: external-partner-api-mtls
+  namespace: default
+spec:
+  host: api.partner.example.com    # must match ServiceEntry host exactly
+  trafficPolicy:
+    tls:
+      mode: MUTUAL                 # present client cert + verify server cert
+      credentialName: egress-client-creds  # Secret in istio-system
+      # sniHosts is inferred from the host field above.
+      # Set explicitly if the SNI differs from the hostname:
+      # sni: api.partner.example.com
+
+---
+# Optional: route egress traffic through the dedicated egress gateway.
+# Remove this section if you don't need centralized egress control.
+apiVersion: networking.istio.io/v1beta1
+kind: VirtualService
+metadata:
+  name: external-partner-api-egress
+  namespace: default
+spec:
+  hosts:
+    - api.partner.example.com
+  tls:
+    - match:
+        - port: 443
+          sniHosts:
+            - api.partner.example.com
+      route:
+        - destination:
+            host: istio-egressgateway.istio-system.svc.cluster.local
+            port:
+              number: 443

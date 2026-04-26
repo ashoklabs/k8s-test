@@ -1,0 +1,24 @@
+# Root "App of Apps" — apply this once with bootstrap.sh.
+# It watches argocd/apps/ in git and creates/syncs all child Applications.
+apiVersion: argoproj.io/v1alpha1
+kind: Application
+metadata:
+  name: root-app
+  namespace: argocd
+  finalizers:
+    - resources-finalizer.argocd.argoproj.io
+spec:
+  project: default
+  source:
+    repoURL: https://github.com/YOUR_ORG/K8s-test.git
+    targetRevision: HEAD
+    path: argocd/apps
+  destination:
+    server: https://kubernetes.default.svc
+    namespace: argocd
+  syncPolicy:
+    automated:
+      prune: true
+      selfHeal: true
+    syncOptions:
+      - CreateNamespace=true

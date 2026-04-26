@@ -1,0 +1,80 @@
+# ArgoCD Helm values
+# Install ArgoCD via:
+#   helm repo add argo https://argoproj.github.io/argo-helm
+#   helm upgrade --install argocd argo/argo-cd \
+#     --namespace argocd --create-namespace \
+#     --version 7.8.26 \
+#     -f argocd/bootstrap/argocd-values.yaml
+
+global:
+  # Set your Git repo server URL for Dex/SSO (optional)
+  # domain: argocd.example.com
+
+configs:
+  cm:
+    # Allow kustomize to load ksops exec plugin for secret decryption
+    kustomize.buildOptions: "--enable-alpha-plugins --enable-exec"
+    # Set your Git repos as allowed sources
+    # repositories: |
+    #   - url: https://github.com/YOUR_ORG/K8s-test.git
+
+  params:
+    server.insecure: true   # OK for kind/dev; remove for production with TLS
+
+# ─── SOPS / ksops Config Management Plugin (CMP) ────────────────────────────
+# The ksops sidecar mounts the AGE private key and runs ksops to decrypt
+# SOPS-encrypted secrets before kustomize builds the manifests.
+repoServer:
+  serviceAccount:
+    create: true
+    name: argocd-repo-server
+
+  # Extra volume for the CMP working dir and the AGE private key secret
+  volumes:
+    - name: cmp-tmp
+      emptyDir: {}
+    - name: sops-age
+      secret:
+        secretName: sops-age   # kubectl create secret generic sops-age ...
+
+  extraContainers:
+    - name: ksops-cmp
+      # ksops image bundles: kustomize + ksops plugin + age + sops
+      image: viaductoss/ksops:v4.3.2
+      command: ["/var/run/argocd/argocd-cmp-server"]
+      env:
+        - name: SOPS_AGE_KEY_FILE
+          value: /sops-age/keys.agekey
+      securityContext:
+        runAsNonRoot: true
+        runAsUser: 999
+      volumeMounts:
+        - mountPath: /var/run/argocd
+          name: var-files
+        - mountPath: /home/argocd/cmp-tmp
+          name: cmp-tmp
+        - mountPath: /sops-age
+          name: sops-age
+          readOnly: true
+
+server:
+  # Resource limits for kind / local use
+  resources:
+    requests:
+      cpu: 50m
+      memory: 128Mi
+    limits:
+      cpu: 500m
+      memory: 256Mi
+
+controller:
+  resources:
+    requests:
+      cpu: 100m
+      memory: 256Mi
+
+applicationSet:
+  resources:
+    requests:
+      cpu: 50m
+      memory: 64Mi

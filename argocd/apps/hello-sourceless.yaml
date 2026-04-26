@@ -1,0 +1,36 @@
+# hello-sourceless application — Knative Service + Istio TLS/mTLS config.
+# Uses the ksops CMP plugin to decrypt SOPS-encrypted certificate secrets.
+# Wave 10 (after all infrastructure is ready).
+apiVersion: argoproj.io/v1alpha1
+kind: Application
+metadata:
+  name: hello-sourceless
+  namespace: argocd
+  annotations:
+    argocd.argoproj.io/sync-wave: "10"
+  finalizers:
+    - resources-finalizer.argocd.argoproj.io
+spec:
+  project: applications
+  source:
+    repoURL: https://github.com/YOUR_ORG/K8s-test.git
+    targetRevision: HEAD
+    path: apps/hello-sourceless
+    # ksops CMP plugin decrypts *.enc.yaml secrets via ksops-generator.yaml
+    plugin:
+      name: ksops
+  destination:
+    server: https://kubernetes.default.svc
+    namespace: default
+  syncPolicy:
+    automated:
+      prune: true
+      selfHeal: true
+    syncOptions:
+      - CreateNamespace=true
+  ignoreDifferences:
+    # Knative mutates the spec — ignore revision name diffs
+    - group: serving.knative.dev
+      kind: Service
+      jsonPointers:
+        - /spec/template/metadata/name

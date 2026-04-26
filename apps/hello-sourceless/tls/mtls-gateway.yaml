@@ -1,0 +1,18 @@
+apiVersion: networking.istio.io/v1beta1
+kind: Gateway
+metadata:
+  name: hello-mtls-gateway
+  namespace: istio-system
+spec:
+  selector:
+    istio: ingressgateway
+  servers:
+    - port:
+        number: 443
+        name: https-mtls
+        protocol: HTTPS
+      tls:
+        mode: MUTUAL             # client MUST present a cert signed by ca.crt
+        credentialName: hello-sourceless-mtls  # Generic secret: tls.crt + tls.key + ca.crt
+      hosts:
+        - "hello-sourceless-mtls.default.example.com"

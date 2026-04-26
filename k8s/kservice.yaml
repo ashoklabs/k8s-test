@@ -1,0 +1,32 @@
+apiVersion: serving.knative.dev/v1
+kind: Service
+metadata:
+  name: hello-sourceless
+  namespace: default
+spec:
+  template:
+    metadata:
+      annotations:
+        autoscaling.knative.dev/min-scale: "1"   # keep at least 1 pod warm (avoids cold start in dev)
+        autoscaling.knative.dev/max-scale: "5"
+    spec:
+      containers:
+        - name: hello
+          image: kind.local/hello-sourceless:latest
+          imagePullPolicy: Never   # image loaded locally into kind
+          ports:
+            - containerPort: 5000
+              protocol: TCP
+          readinessProbe:
+            httpGet:
+              path: /health
+              port: 5000
+            initialDelaySeconds: 5
+            periodSeconds: 10
+          resources:
+            requests:
+              cpu: 50m
+              memory: 64Mi
+            limits:
+              cpu: 200m
+              memory: 128Mi

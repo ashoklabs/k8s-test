@@ -1,0 +1,25 @@
+apiVersion: networking.istio.io/v1beta1
+kind: VirtualService
+metadata:
+  name: hello-sourceless-mtls
+  namespace: default
+spec:
+  hosts:
+    - "hello-sourceless-mtls.default.example.com"
+  gateways:
+    - istio-system/hello-mtls-gateway
+  http:
+    - match:
+        - authority:
+            prefix: hello-sourceless-mtls.default.example.com
+      route:
+        - destination:
+            host: hello-sourceless-00002.default.svc.cluster.local
+            port:
+              number: 80
+          headers:
+            request:
+              set:
+                Knative-Serving-Namespace: default
+                Knative-Serving-Revision: hello-sourceless-00002
+          weight: 100

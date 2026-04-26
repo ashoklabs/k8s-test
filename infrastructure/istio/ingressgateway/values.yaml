@@ -1,0 +1,31 @@
+# Helm values for the Istio ingress gateway
+# Ref: https://github.com/istio/istio/tree/master/manifests/charts/gateway
+
+name: istio-ingressgateway
+
+labels:
+  istio: ingressgateway
+  app: istio-ingressgateway
+
+service:
+  type: NodePort   # Use NodePort for kind; change to LoadBalancer for cloud
+  ports:
+    - name: http2
+      port: 80
+      targetPort: 8080
+      nodePort: 30080
+    - name: https
+      port: 443
+      targetPort: 8443
+      nodePort: 30443
+
+resources:
+  requests:
+    cpu: 50m
+    memory: 64Mi
+  limits:
+    cpu: 500m
+    memory: 256Mi
+
+autoscaling:
+  enabled: false   # Disable HPA for kind / dev

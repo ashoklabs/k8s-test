@@ -1,0 +1,35 @@
+apiVersion: argoproj.io/v1alpha1
+kind: AppProject
+metadata:
+  name: infrastructure
+  namespace: argocd
+  finalizers:
+    - resources-finalizer.argocd.argoproj.io
+spec:
+  description: "Cluster infrastructure — Istio, Knative, cert-manager, etc."
+
+  # Allow syncing from this repo (update to your actual repo URL)
+  sourceRepos:
+    - "https://github.com/YOUR_ORG/K8s-test.git"
+    - "https://istio-release.storage.googleapis.com/charts"
+    - "https://github.com/knative/serving"
+    - "https://github.com/knative-extensions/net-istio"
+
+  destinations:
+    - namespace: "istio-system"
+      server: https://kubernetes.default.svc
+    - namespace: "knative-serving"
+      server: https://kubernetes.default.svc
+    - namespace: "knative-eventing"
+      server: https://kubernetes.default.svc
+    - namespace: "cert-manager"
+      server: https://kubernetes.default.svc
+
+  # Infrastructure project can manage cluster-scoped resources
+  clusterResourceWhitelist:
+    - group: "*"
+      kind: "*"
+
+  namespaceResourceWhitelist:
+    - group: "*"
+      kind: "*"
