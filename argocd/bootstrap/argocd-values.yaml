@@ -10,6 +10,14 @@ configs:
   cm:
     # Allow kustomize to load ksops exec plugin for secret decryption
     kustomize.buildOptions: "--enable-alpha-plugins --enable-exec"
+    # Ignore all webhook-level drift on webhook configurations
+    # (Knative/Istio controllers own the webhooks array at runtime)
+    resource.customizations.ignoreDifferences.admissionregistration.k8s.io_ValidatingWebhookConfiguration: |
+      jqPathExpressions:
+      - .webhooks
+    resource.customizations.ignoreDifferences.admissionregistration.k8s.io_MutatingWebhookConfiguration: |
+      jqPathExpressions:
+      - .webhooks
 
   params:
     server.insecure: true   # OK for kind/dev; remove for production with TLS
