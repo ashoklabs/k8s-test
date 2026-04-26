@@ -21,7 +21,7 @@ spec:
   syncPolicy:
     automated:
       prune: true
-      selfHeal: true
+      selfHeal: false   # disabled: webhook caBundle is managed by Knative controller
     syncOptions:
       - ServerSideApply=true
       - RespectIgnoreDifferences=true
