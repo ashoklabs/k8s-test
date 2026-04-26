@@ -647,3 +647,416 @@ before committing, but the workflow acts as a safety net.
 
 > **Required GitHub secret:** `SOPS_AGE_PRIVATE_KEY` — the full contents of your `age.agekey` file.
 ```
+
+---
+
+## TLS / mTLS Validation Tests
+
+Run these tests after the full stack is up to confirm that TLS termination, mutual TLS, and
+east-west mTLS enforcement all work correctly.
+
+### Prerequisites
+
+```bash
+# Start port-forwards (if not already running)
+kubectl port-forward svc/istio-ingressgateway -n istio-system 8080:80 8443:443 &
+
+# Extract certificates from cluster secrets into /tmp for curl
+kubectl get secret hello-sourceless-tls -n istio-system \
+  -o jsonpath='{.data.tls\.crt}' | base64 -d > /tmp/tls-server.crt
+
+kubectl get secret hello-sourceless-mtls -n istio-system \
+  -o jsonpath='{.data.tls\.crt}' | base64 -d > /tmp/mtls-client.crt
+kubectl get secret hello-sourceless-mtls -n istio-system \
+  -o jsonpath='{.data.tls\.key}' | base64 -d > /tmp/mtls-client.key
+kubectl get secret hello-sourceless-mtls -n istio-system \
+  -o jsonpath='{.data.ca\.crt}'  | base64 -d > /tmp/mtls-ca.crt
+```
+
+> **Corporate proxy:** If you're behind a proxy set `--noproxy "*"` on every curl call,
+> or run `unset ALL_PROXY all_proxy https_proxy http_proxy HTTPS_PROXY HTTP_PROXY` in your shell.
+
+---
+
+### Test 1 — Plain HTTP (baseline)
+
+```bash
+curl -s --noproxy "*" \
+  -H "Host: hello-sourceless.default.example.com" \
+  http://localhost:8080/ | python3 -m json.tool
+```
+
+**Expected:** `HTTP 200` with JSON body `{"hostname":"...","message":"Hello, World!","trace_id":"..."}`.
+
+---
+
+### Test 2 — HTTPS without CA cert (must fail)
+
+```bash
+curl -sv --noproxy "*" \
+  -H "Host: hello-sourceless.default.example.com" \
+  --resolve "hello-sourceless.default.example.com:8443:127.0.0.1" \
+  https://hello-sourceless.default.example.com:8443/ 2>&1 | grep -E "SSL|curl:|certificate"
+```
+
+**Expected:** `SSL certificate problem: self signed certificate` — curl rejects the untrusted cert.
+
+---
+
+### Test 3 — HTTPS with CA cert (SIMPLE TLS — server cert only)
+
+```bash
+curl -s --noproxy "*" \
+  --cacert /tmp/tls-server.crt \
+  --resolve "hello-sourceless.default.example.com:8443:127.0.0.1" \
+  https://hello-sourceless.default.example.com:8443/ | python3 -m json.tool
+```
+
+**Expected:** TLSv1.3 handshake succeeds, `HTTP 200` with JSON body.  
+Verify the TLS details:
+
+```bash
+curl -sv --noproxy "*" \
+  --cacert /tmp/tls-server.crt \
+  --resolve "hello-sourceless.default.example.com:8443:127.0.0.1" \
+  https://hello-sourceless.default.example.com:8443/ 2>&1 \
+  | grep -E "SSL connection|TLSv|subject|issuer|< HTTP"
+# SSL connection using TLSv1.3 / ...
+# subject: CN=hello-sourceless.default.example.com; O=local-dev
+# issuer:  CN=hello-sourceless.default.example.com; O=local-dev
+# < HTTP/2 200
+```
+
+---
+
+### Test 4 — mTLS without client cert (must fail)
+
+```bash
+curl -sv --noproxy "*" \
+  --cacert /tmp/mtls-ca.crt \
+  --resolve "hello-sourceless-mtls.default.example.com:8443:127.0.0.1" \
+  https://hello-sourceless-mtls.default.example.com:8443/ 2>&1 \
+  | grep -E "SSL|alert|curl:|failed|handshake|< HTTP"
+```
+
+**Expected:** TLS handshake error / connection reset — the Istio gateway (MUTUAL mode) demanded a
+client certificate that was not provided.
+
+---
+
+### Test 5 — mTLS with client cert (must succeed)
+
+```bash
+curl -s --noproxy "*" \
+  --cacert /tmp/mtls-ca.crt \
+  --cert   /tmp/mtls-client.crt \
+  --key    /tmp/mtls-client.key \
+  --resolve "hello-sourceless-mtls.default.example.com:8443:127.0.0.1" \
+  https://hello-sourceless-mtls.default.example.com:8443/ | python3 -m json.tool
+```
+
+**Expected:** TLSv1.3 mutual handshake succeeds, `HTTP 200` with JSON body.  
+Server cert issuer is `CN=local-dev-ca` (signed by your local CA).
+
+---
+
+### Test 6 — East-West mTLS: non-sidecar pod must be rejected (STRICT PeerAuthentication)
+
+From inside the cluster — a pod **without** an Istio sidecar should be unable to reach
+the app because `PeerAuthentication/hello-sourceless-strict` enforces `STRICT` mTLS:
+
+```bash
+kubectl run mtls-noinjection-test \
+  --image=curlimages/curl:latest \
+  --rm -it --restart=Never \
+  --overrides='{"metadata":{"annotations":{"sidecar.istio.io/inject":"false"}}}' \
+  -n default -- \
+  curl -sv --max-time 5 http://hello-sourceless-svc.default.svc.cluster.local:80/ 2>&1 \
+  | grep -E "reset|refused|fail"
+# Expected: "Recv failure: Connection reset by peer"
+```
+
+A pod **with** a sidecar (the default in the `default` namespace) succeeds — Istio
+auto-upgrades the connection to mTLS transparently:
+
+```bash
+kubectl run mtls-sidecar-test \
+  --image=curlimages/curl:latest \
+  --rm -it --restart=Never \
+  -n default -- \
+  curl -s http://hello-sourceless-svc.default.svc.cluster.local:80/
+# Expected: {"hostname":"...","message":"Hello, World!","trace_id":"..."}
+```
+
+---
+
+### Test summary
+
+| # | Test | Expected result |
+|---|------|----------------|
+| 1 | Plain HTTP | `200 OK` |
+| 2 | HTTPS — no CA cert | `SSL certificate problem` |
+| 3 | HTTPS — with CA cert (SIMPLE TLS) | `TLSv1.3` + `200 OK` |
+| 4 | mTLS — no client cert | TLS handshake rejected |
+| 5 | mTLS — with client + CA cert | `TLSv1.3` mutual + `200 OK` |
+| 6a | No-sidecar pod → app (STRICT) | `Connection reset by peer` |
+| 6b | Sidecar pod → app (auto mTLS) | `200 OK` |
+
+---
+
+## Deploying to AKS (Azure Kubernetes Service)
+
+This section covers the extra steps required to run the same stack on a production AKS cluster.
+Everything in git remains identical — only the bootstrapping commands change.
+
+### Prerequisites
+
+```bash
+# Azure CLI + kubeconfig
+az login
+az aks get-credentials --resource-group <rg> --name <cluster-name>
+
+# Verify cluster access
+kubectl get nodes
+```
+
+| Tool | Version tested |
+|------|---------------|
+| Azure CLI | ≥ 2.60 |
+| kubectl | matches AKS version |
+| helm | ≥ 3.14 |
+| age | ≥ 1.1 |
+| sops | ≥ 3.9 |
+
+---
+
+### Step 1 — Namespace + Istio injection label
+
+```bash
+kubectl label namespace default istio-injection=enabled --overwrite
+```
+
+> On AKS this label is idempotent and safe to re-run.
+
+---
+
+### Step 2 — Install Istio
+
+AKS does **not** have a built-in Istio package manager; use `istioctl` exactly as for kind:
+
+```bash
+istioctl install \
+  --set 'components.ingressGateways[0].enabled=true' \
+  --set 'components.ingressGateways[0].name=istio-ingressgateway' \
+  --set 'components.egressGateways[0].enabled=true' \
+  --set 'components.egressGateways[0].name=istio-egressgateway' \
+  -y
+```
+
+> **AKS-specific:** The `istio-ingressgateway` Service will receive a **real `LoadBalancer` IP** from
+> Azure automatically — no NodePort or port-forwarding needed.
+
+Get the external IP after install:
+
+```bash
+kubectl get svc istio-ingressgateway -n istio-system \
+  --watch  # wait until EXTERNAL-IP is no longer <pending>
+```
+
+---
+
+### Step 3 — DNS / Hosts file
+
+Replace the `example.com` placeholder with a real domain, or add entries to your DNS zone:
+
+| Hostname | Value |
+|----------|-------|
+| `hello-sourceless.default.<your-domain>` | `<EXTERNAL-IP>` |
+| `hello-sourceless-mtls.default.<your-domain>` | `<EXTERNAL-IP>` |
+
+Update the Knative domain config:
+
+```bash
+kubectl patch configmap/config-domain \
+  --namespace knative-serving \
+  --type merge \
+  --patch '{"data":{"<your-domain>":""}}'
+```
+
+Also update all ArgoCD Application manifests and VirtualService `hosts:` fields to use the real domain.
+
+---
+
+### Step 4 — TLS certificates
+
+#### Option A — Let's Encrypt / cert-manager (recommended for production)
+
+```bash
+# Install cert-manager
+helm repo add jetstack https://charts.jetstack.io
+helm install cert-manager jetstack/cert-manager \
+  --namespace cert-manager --create-namespace \
+  --set installCRDs=true
+
+# Create a ClusterIssuer (HTTP-01 or DNS-01 challenge)
+kubectl apply -f - <<EOF
+apiVersion: cert-manager.io/v1
+kind: ClusterIssuer
+metadata:
+  name: letsencrypt-prod
+spec:
+  acme:
+    server: https://acme-v02.api.letsencrypt.org/directory
+    email: <your-email>
+    privateKeySecretRef:
+      name: letsencrypt-prod
+    solvers:
+      - http01:
+          ingress:
+            class: istio
+EOF
+```
+
+cert-manager will automatically create and renew the `hello-sourceless-tls` secret in
+`istio-system`. Remove the manual `kubectl create secret tls ...` commands — cert-manager
+owns those secrets.
+
+#### Option B — Bring your own certificate (same as kind setup)
+
+Generate with the real domain name:
+
+```bash
+openssl req -x509 -nodes -days 365 -newkey rsa:2048 \
+  -keyout certs/tls.key -out certs/tls.crt \
+  -subj "/CN=hello-sourceless.default.<your-domain>/O=my-org" \
+  -addext "subjectAltName=DNS:hello-sourceless.default.<your-domain>"
+```
+
+Then follow the same SOPS encrypt → commit → ArgoCD sync flow.
+
+---
+
+### Step 5 — Container image registry
+
+kind uses `imagePullPolicy: Never` and loads images locally. AKS needs the image in a registry.
+
+**Azure Container Registry (ACR) — recommended:**
+
+```bash
+# Create ACR (one-time)
+az acr create --resource-group <rg> --name <acr-name> --sku Basic
+
+# Attach ACR to AKS (grants AKS pull permissions automatically)
+az aks update --resource-group <rg> --name <cluster-name> \
+  --attach-acr <acr-name>
+
+# Build and push image
+az acr build \
+  --registry <acr-name> \
+  --image hello-sourceless:latest \
+  --file docker/sourceless/Dockerfile .
+```
+
+Update [k8s/deployment.yaml](k8s/deployment.yaml) and [apps/hello-sourceless/ksvc.yaml](apps/hello-sourceless/ksvc.yaml):
+
+```yaml
+image: <acr-name>.azurecr.io/hello-sourceless:latest
+imagePullPolicy: Always   # change from Never
+```
+
+Commit and push — ArgoCD will sync the new image reference.
+
+---
+
+### Step 6 — SOPS AGE key
+
+The bootstrap is the same as for kind. On AKS, store the AGE private key in
+**Azure Key Vault** for auditability, then pull it at bootstrap time:
+
+```bash
+# Store key in Key Vault (one-time)
+az keyvault secret set \
+  --vault-name <vault-name> \
+  --name sops-age-private-key \
+  --file age.agekey
+
+# At bootstrap time — retrieve and create the k8s secret
+az keyvault secret show \
+  --vault-name <vault-name> \
+  --name sops-age-private-key \
+  --query value -o tsv > /tmp/age.agekey
+
+kubectl create secret generic sops-age \
+  --from-file=keys.agekey=/tmp/age.agekey \
+  -n argocd
+
+rm /tmp/age.agekey   # clean up the temp file
+```
+
+---
+
+### Step 7 — Run the bootstrap script
+
+```bash
+./argocd/bootstrap/bootstrap.sh https://github.com/<YOUR_ORG>/K8s-test.git
+```
+
+ArgoCD installs and immediately begins syncing all waves (Istio → Knative → app).
+
+---
+
+### Step 8 — Verify
+
+```bash
+# All apps Synced + Healthy
+kubectl get applications -n argocd
+
+# Ingress gateway external IP
+kubectl get svc istio-ingressgateway -n istio-system
+
+# App endpoint (replace with your real domain + public IP)
+curl -s https://hello-sourceless.default.<your-domain>/ | python3 -m json.tool
+
+# mTLS endpoint
+curl -s \
+  --cert certs/client/client.crt \
+  --key  certs/client/client.key \
+  --cacert certs/ca.crt \
+  https://hello-sourceless-mtls.default.<your-domain>/ | python3 -m json.tool
+```
+
+---
+
+### AKS — differences from kind at a glance
+
+| Topic | kind (local) | AKS (production) |
+|-------|-------------|-----------------|
+| Ingress gateway | NodePort `30080`/`30443` + `port-forward` | Azure `LoadBalancer` with public IP |
+| DNS | `/etc/hosts` + `--resolve` | Real DNS zone (Azure DNS or external) |
+| TLS certificates | Self-signed, created with `openssl` | cert-manager (Let's Encrypt) or corporate PKI |
+| Container images | `kind load docker-image` / `imagePullPolicy: Never` | ACR + `az aks update --attach-acr` |
+| AGE private key | Local `age.agekey` file | Azure Key Vault → pulled at bootstrap |
+| Node resources | Single control-plane, minimal resources | Standard node pool (≥ `Standard_D4s_v3` recommended) |
+| Scale-to-zero cold start | Fast (local Docker) | Fast (warm images in ACR) |
+| Knative domain | `example.com` (fake) | Real registered domain |
+
+---
+
+### AKS resource recommendations
+
+Minimum node pool for this stack (Istio + Knative + ArgoCD + app):
+
+| Component | CPU request | Memory request |
+|-----------|-------------|---------------|
+| istiod | 100m | 128Mi |
+| istio-ingressgateway | 100m | 128Mi |
+| knative-activator | 100m | 60Mi |
+| knative-controller | 100m | 100Mi |
+| knative-webhook | 20m | 20Mi |
+| argocd-server | 50m | 64Mi |
+| argocd-repo-server | 50m | 64Mi |
+| argocd-application-controller | 250m | 256Mi |
+| hello-sourceless (per pod) | 50m | 64Mi |
+
+**Recommended:** `Standard_D4s_v3` (4 vCPU / 16 GiB) × 2 nodes or `Standard_D2s_v3` × 3 nodes.
+Remove the resource-request overrides that were added for kind — let the defaults apply on AKS.
