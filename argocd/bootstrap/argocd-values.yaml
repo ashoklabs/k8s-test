@@ -6,20 +6,23 @@
 #     --version 7.8.26 \
 #     -f argocd/bootstrap/argocd-values.yaml
 
-global:
-  # Set your Git repo server URL for Dex/SSO (optional)
-  # domain: argocd.example.com
-
 configs:
   cm:
     # Allow kustomize to load ksops exec plugin for secret decryption
     kustomize.buildOptions: "--enable-alpha-plugins --enable-exec"
-    # Set your Git repos as allowed sources
-    # repositories: |
-    #   - url: https://github.com/YOUR_ORG/K8s-test.git
 
   params:
     server.insecure: true   # OK for kind/dev; remove for production with TLS
+
+  # Create argocd-cmp-cm ConfigMap with ksops plugin definition
+  cmp:
+    create: true
+    plugins:
+      ksops:
+        generate:
+          command: ["sh", "-c"]
+          args:
+            - "kustomize build --enable-alpha-plugins --enable-exec ."
 
 # ─── SOPS / ksops Config Management Plugin (CMP) ────────────────────────────
 # The ksops sidecar mounts the AGE private key and runs ksops to decrypt
@@ -29,13 +32,27 @@ repoServer:
     create: true
     name: argocd-repo-server
 
+  # Additional volumeMounts to the repo server main container
+  # The cmp-plugins dir must be shared with the ksops-cmp sidecar for socket discovery
+  volumeMounts:
+    - mountPath: /home/argocd/cmp-server/plugins/
+      name: cmp-plugins
+
   # Extra volume for the CMP working dir and the AGE private key secret
   volumes:
     - name: cmp-tmp
       emptyDir: {}
+    - name: cmp-plugins
+      emptyDir: {}
     - name: sops-age
       secret:
         secretName: sops-age   # kubectl create secret generic sops-age ...
+    - name: ksops-plugin-config
+      configMap:
+        name: argocd-cmp-cm    # created by configs.cmp.create above
+        items:
+          - key: ksops.yaml
+            path: plugin.yaml
 
   extraContainers:
     - name: ksops-cmp
@@ -51,6 +68,10 @@ repoServer:
       volumeMounts:
         - mountPath: /var/run/argocd
           name: var-files
+        - mountPath: /home/argocd/cmp-server/config/
+          name: ksops-plugin-config
+        - mountPath: /home/argocd/cmp-server/plugins/
+          name: cmp-plugins
         - mountPath: /home/argocd/cmp-tmp
           name: cmp-tmp
         - mountPath: /sops-age
@@ -58,23 +79,11 @@ repoServer:
           readOnly: true
 
 server:
-  # Resource limits for kind / local use
-  resources:
-    requests:
-      cpu: 50m
-      memory: 128Mi
-    limits:
-      cpu: 500m
-      memory: 256Mi
+  # No resource requests — kind/dev cluster is memory-constrained
+  resources: {}
 
 controller:
-  resources:
-    requests:
-      cpu: 100m
-      memory: 256Mi
+  resources: {}
 
 applicationSet:
-  resources:
-    requests:
-      cpu: 50m
-      memory: 64Mi
+  resources: {}
