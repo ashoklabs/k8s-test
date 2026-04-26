@@ -14,12 +14,7 @@ spec:
             prefix: hello-sourceless.default.example.com
       route:
         - destination:
-            host: hello-sourceless-00002.default.svc.cluster.local
+            host: hello-sourceless-svc.default.svc.cluster.local
             port:
               number: 80
-          headers:
-            request:
-              set:
-                Knative-Serving-Namespace: default
-                Knative-Serving-Revision: hello-sourceless-00002
           weight: 100

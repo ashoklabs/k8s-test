@@ -31,7 +31,7 @@ metadata:
 spec:
   selector:
     matchLabels:
-      serving.knative.dev/service: hello-sourceless
+      app: hello-sourceless
   mtls:
     mode: STRICT
 
@@ -45,7 +45,7 @@ metadata:
   name: hello-sourceless-upstream-mtls
   namespace: default
 spec:
-  host: hello-sourceless-00002.default.svc.cluster.local
+  host: hello-sourceless-svc.default.svc.cluster.local
   trafficPolicy:
     tls:
       mode: ISTIO_MUTUAL   # Istio-managed certs (SPIFFE/SVID), auto-rotated by istiod
