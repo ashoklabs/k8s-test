@@ -32,17 +32,9 @@ repoServer:
     create: true
     name: argocd-repo-server
 
-  # Additional volumeMounts to the repo server main container
-  # The cmp-plugins dir must be shared with the ksops-cmp sidecar for socket discovery
-  volumeMounts:
-    - mountPath: /home/argocd/cmp-server/plugins/
-      name: cmp-plugins
-
-  # Extra volume for the CMP working dir and the AGE private key secret
+  # Extra volumes for the CMP working dir and the AGE private key secret
   volumes:
     - name: cmp-tmp
-      emptyDir: {}
-    - name: cmp-plugins
       emptyDir: {}
     - name: sops-age
       secret:
@@ -71,7 +63,7 @@ repoServer:
         - mountPath: /home/argocd/cmp-server/config/
           name: ksops-plugin-config
         - mountPath: /home/argocd/cmp-server/plugins/
-          name: cmp-plugins
+          name: plugins          # chart's default emptyDir shared with main container
         - mountPath: /home/argocd/cmp-tmp
           name: cmp-tmp
         - mountPath: /sops-age
